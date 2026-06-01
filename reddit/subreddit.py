@@ -1,8 +1,6 @@
 import re
 
-import praw
-from praw.models import MoreComments
-from prawcore.exceptions import ResponseException
+from reddit.jsonapi import RedditClient
 
 from utils import settings
 from utils.ai_methods import sort_by_similarity
@@ -18,34 +16,12 @@ def get_subreddit_threads(POST_ID: str):
     Returns a list of threads from the AskReddit subreddit.
     """
 
-    print_substep("Logging into Reddit.")
+    print_substep("Reading Reddit data (public .json endpoints, no API).")
 
     content = {}
-    if settings.config["reddit"]["creds"]["2fa"]:
-        print("\nEnter your two-factor authentication code from your authenticator app.\n")
-        code = input("> ")
-        print()
-        pw = settings.config["reddit"]["creds"]["password"]
-        passkey = f"{pw}:{code}"
-    else:
-        passkey = settings.config["reddit"]["creds"]["password"]
-    username = settings.config["reddit"]["creds"]["username"]
-    if str(username).casefold().startswith("u/"):
-        username = username[2:]
-    try:
-        reddit = praw.Reddit(
-            client_id=settings.config["reddit"]["creds"]["client_id"],
-            client_secret=settings.config["reddit"]["creds"]["client_secret"],
-            user_agent="Accessing Reddit threads",
-            username=username,
-            passkey=passkey,
-            check_for_async=False,
-        )
-    except ResponseException as e:
-        if e.response.status_code == 401:
-            print("Invalid credentials - please check them in config.toml")
-    except:
-        print("Something went wrong...")
+    # Read-only client that uses reddit.com's public .json endpoints.
+    # No credentials / Reddit API app required for fetching post data.
+    reddit = RedditClient()
 
     # Ask user for subreddit input
     print_step("Getting subreddit threads...")
@@ -129,9 +105,6 @@ def get_subreddit_threads(POST_ID: str):
             content["thread_post"] = submission.selftext
     else:
         for top_level_comment in submission.comments:
-            if isinstance(top_level_comment, MoreComments):
-                continue
-
             if top_level_comment.body in ["[removed]", "[deleted]"]:
                 continue  # # see https://github.com/JasonLovesDoggo/RedditVideoMakerBot/issues/78
             if _contains_blocked_words(top_level_comment.body):

@@ -246,3 +246,17 @@ video_creation/data/envvars.txt
 
 config.toml
 *.exe
+
+# ffmpeg/ffprobe binaries (auto-downloaded by utils/ffmpeg_bootstrap.py)
+.ffmpeg_bin/
+.ffmpeg_backup/
+
+# local debug / dev harnesses (not part of the bot)
+cache_ro.py
+debug_dom.py
+debug_dom2.py
+debug_dom3.py
+test_one_ss.py
+
+# moved-aside stale TTS clips
+assets/temp/**/_old/

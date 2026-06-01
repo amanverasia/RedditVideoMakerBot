@@ -69,56 +69,20 @@ def get_screenshots_of_reddit_posts(reddit_object: dict, screenshot_num: int):
         )
 
     screenshot_num: int
-    with sync_playwright() as p:
-        print_substep("Launching Headless Browser...")
+    # Reuse the shared headed browser session (already past Reddit's JS challenge).
+    if True:
+        from utils import reddit_browser
 
-        browser = p.chromium.launch(
-            headless=True
-        )  # headless=False will show the browser for debugging purposes
-        # Device scale factor (or dsf for short) allows us to increase the resolution of the screenshots
-        # When the dsf is 1, the width of the screenshot is 600 pixels
-        # so we need a dsf such that the width of the screenshot is greater than the final resolution of the video
-        dsf = (W // 600) + 1
+        print_substep("Using shared Reddit browser session...")
+        context = reddit_browser.get_context()
+        reddit_browser._warmup(context)
 
-        context = browser.new_context(
-            locale=lang or "en-CA,en;q=0.9",
-            color_scheme="dark",
-            viewport=ViewportSize(width=W, height=H),
-            device_scale_factor=dsf,
-            user_agent=f"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{browser.version}.0.0.0 Safari/537.36",
-            extra_http_headers={
-                "Dnt": "1",
-                "Sec-Ch-Ua": '"Not A(Brand";v="8", "Chromium";v="132", "Google Chrome";v="132"',
-            },
-        )
         cookies = json.load(cookie_file)
         cookie_file.close()
+        context.add_cookies(cookies)  # load preference (theme) cookies
 
-        context.add_cookies(cookies)  # load preference cookies
-
-        # Login to Reddit
-        print_substep("Logging in to Reddit...")
         page = context.new_page()
-        page.goto("https://www.reddit.com/login", timeout=0)
-        page.set_viewport_size(ViewportSize(width=1920, height=1080))
-        page.wait_for_load_state()
-
-        page.locator(f'input[name="username"]').fill(settings.config["reddit"]["creds"]["username"])
-        page.locator(f'input[name="password"]').fill(settings.config["reddit"]["creds"]["password"])
-        page.get_by_role("button", name="Log In").click()
-        page.wait_for_timeout(5000)
-
-        login_error_div = page.locator(".AnimatedForm__errorMessage").first
-        if login_error_div.is_visible():
-
-            print_substep(
-                "Your reddit credentials are incorrect! Please modify them accordingly in the config.toml file.",
-                style="red",
-            )
-            exit()
-        else:
-            pass
-
+        page.set_viewport_size(ViewportSize(width=W, height=H))
         page.wait_for_load_state()
         # Handle the redesign
         # Check if the redesign optout cookie is set
@@ -133,24 +97,15 @@ def get_screenshots_of_reddit_posts(reddit_object: dict, screenshot_num: int):
         page.wait_for_load_state()
         page.wait_for_timeout(5000)
 
-        if page.locator(
-            "#t3_12hmbug > div > div._3xX726aBn29LDbsDtzr_6E._1Ap4F5maDtT1E1YuCiaO0r.D3IL3FD0RFy_mkKLPwL4 > div > div > button"
-        ).is_visible():
-            # This means the post is NSFW and requires to click the proceed button.
-
-            print_substep("Post is NSFW. You are spicy...")
-            page.locator(
-                "#t3_12hmbug > div > div._3xX726aBn29LDbsDtzr_6E._1Ap4F5maDtT1E1YuCiaO0r.D3IL3FD0RFy_mkKLPwL4 > div > div > button"
-            ).click()
-            page.wait_for_load_state()  # Wait for page to fully load
-
-            # translate code
-        if page.locator(
-            "#SHORTCUT_FOCUSABLE_DIV > div:nth-child(7) > div > div > div > header > div > div._1m0iFpls1wkPZJVo38-LSh > button > i"
-        ).is_visible():
-            page.locator(
-                "#SHORTCUT_FOCUSABLE_DIV > div:nth-child(7) > div > div > div > header > div > div._1m0iFpls1wkPZJVo38-LSh > button > i"
-            ).click()  # Interest popup is showing, this code will close it
+        # Dismiss NSFW / content gate if present (current Reddit DOM).
+        try:
+            gate = page.locator('shreddit-async-loader[bundlename="content_warning"] button, [data-testid="content-gate"] button').first
+            if gate.is_visible():
+                print_substep("Post is NSFW. You are spicy...")
+                gate.click()
+                page.wait_for_load_state()
+        except Exception:
+            pass
 
         if lang:
             print_substep("Translating post...")
@@ -161,7 +116,7 @@ def get_screenshots_of_reddit_posts(reddit_object: dict, screenshot_num: int):
             )
 
             page.evaluate(
-                "tl_content => document.querySelector('[data-adclicklocation=\"title\"] > div > div > h1').textContent = tl_content",
+                "tl_content => { const h = document.querySelector('shreddit-post h1') || document.querySelector('h1'); if (h) h.textContent = tl_content; }",
                 texts_in_tl,
             )
         else:
@@ -175,12 +130,12 @@ def get_screenshots_of_reddit_posts(reddit_object: dict, screenshot_num: int):
                 # zoom the body of the page
                 page.evaluate("document.body.style.zoom=" + str(zoom))
                 # as zooming the body doesn't change the properties of the divs, we need to adjust for the zoom
-                location = page.locator('[data-test-id="post-content"]').bounding_box()
+                location = page.locator("shreddit-post").bounding_box()
                 for i in location:
                     location[i] = float("{:.2f}".format(location[i] * zoom))
                 page.screenshot(clip=location, path=postcontentpath)
             else:
-                page.locator('[data-test-id="post-content"]').screenshot(path=postcontentpath)
+                page.locator("shreddit-post").screenshot(path=postcontentpath)
         except Exception as e:
             print_substep("Something went wrong!", style="red")
             resp = input(
@@ -201,7 +156,7 @@ def get_screenshots_of_reddit_posts(reddit_object: dict, screenshot_num: int):
             raise e
 
         if storymode:
-            page.locator('[data-click-id="text"]').first.screenshot(
+            page.locator("shreddit-post").first.screenshot(
                 path=f"assets/temp/{reddit_id}/png/story_content.png"
             )
         else:
@@ -218,7 +173,9 @@ def get_screenshots_of_reddit_posts(reddit_object: dict, screenshot_num: int):
                 if page.locator('[data-testid="content-gate"]').is_visible():
                     page.locator('[data-testid="content-gate"] button').click()
 
-                page.goto(f"https://new.reddit.com/{comment['comment_url']}")
+                page.goto(f"https://www.reddit.com{comment['comment_url']}")
+                page.wait_for_load_state()
+                page.wait_for_timeout(2000)
 
                 # translate code
 
@@ -229,36 +186,111 @@ def get_screenshots_of_reddit_posts(reddit_object: dict, screenshot_num: int):
                         to_language=settings.config["reddit"]["thread"]["post_lang"],
                     )
                     page.evaluate(
-                        '([tl_content, tl_id]) => document.querySelector(`#t1_${tl_id} > div:nth-child(2) > div > div[data-testid="comment"] > div`).textContent = tl_content',
+                        '([tl_content, tl_id]) => { const el = document.querySelector(`shreddit-comment[thingid="t1_${tl_id}"] [id$="-comment-rtjson-content"]`) || document.querySelector(`shreddit-comment[thingid="t1_${tl_id}"]`); if (el) el.textContent = tl_content; }',
                         [comment_tl, comment["comment_id"]],
                     )
                 try:
-                    if settings.config["settings"]["zoom"] != 1:
-                        # store zoom settings
-                        zoom = settings.config["settings"]["zoom"]
-                        # zoom the body of the page
+                    comment_selector = (
+                        f'shreddit-comment[thingid="t1_{comment["comment_id"]}"]'
+                    )
+                    # Prepare the page so a screenshot of the comment element
+                    # captures ONLY this comment:
+                    #   - hide the sticky top header (otherwise it overlaps the
+                    #     comment when the comment sits at the top of the page)
+                    #   - hide any nested replies so the element's own bounding
+                    #     box doesn't include the whole reply tree
+                    #   - hide cookie/login banners and overlays
+                    # scroll the comment into view first so clip coords are valid
+                    page.locator(comment_selector).scroll_into_view_if_needed()
+                    page.wait_for_timeout(300)
+                    found = page.evaluate(
+                        """(cid) => {
+                            const c = document.querySelector(`shreddit-comment[thingid="t1_${cid}"]`);
+                            if (!c) return false;
+                            // 1) hide sticky / fixed headers and known overlays so
+                            //    they don't overlap the comment when it's at the top.
+                            const killSelectors = [
+                                'reddit-header-large', 'shreddit-app > header', 'header',
+                                'shreddit-async-loader[bundlename="desktop_banner"]',
+                                'xpromo-nsfw-blocking-container', 'shreddit-experience-tree',
+                                'reddit-sticky-header'
+                            ];
+                            killSelectors.forEach(sel => document.querySelectorAll(sel).forEach(e => {
+                                const cs = getComputedStyle(e);
+                                if (cs.position === 'fixed' || cs.position === 'sticky' || e.tagName.includes('HEADER')) {
+                                    e.style.display = 'none';
+                                }
+                            }));
+                            // 2) hide everything that isn't this comment's own
+                            //    content. The current Reddit DOM lays out a
+                            //    comment as direct children with slots:
+                            //      commentAvatar / commentMeta / comment /
+                            //      actionRow  -> KEEP
+                            //      next-reply / children-* /
+                            //      more-comments-permalink -> HIDE (reply tree)
+                            [...c.children].forEach(el => {
+                                const slot = el.getAttribute && el.getAttribute('slot');
+                                if (!slot) return;
+                                if (slot.startsWith('children-') ||
+                                    slot === 'next-reply' ||
+                                    slot === 'more-comments-permalink') {
+                                    el.style.display = 'none';
+                                }
+                            });
+                            // also hide any deeper #comment-children / details
+                            // variants just in case the DOM differs.
+                            c.querySelectorAll(':scope > details > #comment-children, :scope > details > div > #comment-children').forEach(e => e.style.display = 'none');
+
+                            // Compute a TIGHT clip box from only the visible
+                            // own-content slots. The shreddit-comment element's
+                            // box still reserves space for the (now hidden)
+                            // reply tree, so screenshotting the element itself
+                            // leaves white space — we measure the kept slots
+                            // instead.
+                            const keep = ['commentAvatar','commentMeta','comment','actionRow'];
+                            let x1=Infinity, y1=Infinity, x2=-Infinity, y2=-Infinity;
+                            [...c.children].forEach(el => {
+                                const slot = el.getAttribute && el.getAttribute('slot');
+                                if (!keep.includes(slot)) return;
+                                const r = el.getBoundingClientRect();
+                                if (r.width === 0 || r.height === 0) return;
+                                x1 = Math.min(x1, r.left); y1 = Math.min(y1, r.top);
+                                x2 = Math.max(x2, r.right); y2 = Math.max(y2, r.bottom);
+                            });
+                            if (!isFinite(x1)) return null;
+                            // small padding around the content
+                            const pad = 8;
+                            return {
+                                x: Math.max(0, x1 - pad),
+                                y: Math.max(0, y1 - pad),
+                                width: (x2 - x1) + pad * 2,
+                                height: (y2 - y1) + pad * 2,
+                            };
+                        }""",
+                        comment["comment_id"],
+                    )
+                    if not found:
+                        raise TimeoutError("comment element not found")
+
+                    zoom = settings.config["settings"]["zoom"]
+                    if zoom != 1:
                         page.evaluate("document.body.style.zoom=" + str(zoom))
-                        # scroll comment into view
-                        page.locator(f"#t1_{comment['comment_id']}").scroll_into_view_if_needed()
-                        # as zooming the body doesn't change the properties of the divs, we need to adjust for the zoom
-                        location = page.locator(f"#t1_{comment['comment_id']}").bounding_box()
-                        for i in location:
-                            location[i] = float("{:.2f}".format(location[i] * zoom))
-                        page.screenshot(
-                            clip=location,
-                            path=f"assets/temp/{reddit_id}/png/comment_{idx}.png",
-                        )
-                    else:
-                        page.locator(f"#t1_{comment['comment_id']}").screenshot(
-                            path=f"assets/temp/{reddit_id}/png/comment_{idx}.png"
-                        )
+                        for k in found:
+                            found[k] = float("{:.2f}".format(found[k] * zoom))
+
+                    # Clip-screenshot the tight content box (no reserved reply
+                    # space, no header overlap).
+                    page.screenshot(
+                        clip=found,
+                        path=f"assets/temp/{reddit_id}/png/comment_{idx}.png",
+                    )
                 except TimeoutError:
                     del reddit_object["comments"]
                     screenshot_num += 1
                     print("TimeoutError: Skipping screenshot...")
                     continue
 
-        # close browser instance when we are done using it
-        browser.close()
+        # close only the page; the shared browser session stays alive
+        page.close()
 
     print_substep("Screenshots downloaded Successfully.", style="bold green")

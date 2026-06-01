@@ -1,17 +1,22 @@
 #!/usr/bin/env python
 import math
+import os
 import sys
+
+# The `translators` library tries to geolocate a backend over the network at
+# import time, which fails (and crashes) on restricted networks. Pin a region
+# so it skips that lookup. Must be set before translators is imported anywhere.
+os.environ.setdefault("translators_default_region", "EN")
 from os import name
 from pathlib import Path
 from subprocess import Popen
 from typing import Dict, NoReturn
 
-from prawcore import ResponseException
-
 from reddit.subreddit import get_subreddit_threads
 from utils import settings
 from utils.cleanup import cleanup
 from utils.console import print_markdown, print_step, print_substep
+from utils.ffmpeg_bootstrap import ensure_ffmpeg
 from utils.ffmpeg_install import ffmpeg_install
 from utils.id import extract_id
 from utils.version import checkversion
@@ -50,6 +55,16 @@ def main(POST_ID=None) -> None:
     global reddit_id, reddit_object
     reddit_object = get_subreddit_threads(POST_ID)
     reddit_id = extract_id(reddit_object)
+    # Cache the fetched reddit_object so the pipeline can be re-run from disk
+    # without hitting Reddit again (useful for debugging later stages).
+    try:
+        import json as _json
+
+        Path(f"assets/temp/{reddit_id}").mkdir(parents=True, exist_ok=True)
+        with open(f"assets/temp/{reddit_id}/reddit_object.json", "w", encoding="utf-8") as _f:
+            _json.dump(reddit_object, _f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
     print_substep(f"Thread ID is {reddit_id}", style="bold blue")
     length, number_of_comments = save_text_to_mp3(reddit_object)
     length = math.ceil(length)
@@ -74,6 +89,9 @@ def run_many(times) -> None:
 
 
 def shutdown() -> NoReturn:
+    from utils import reddit_browser
+
+    reddit_browser.close()
     if "reddit_id" in globals():
         print_markdown("## Clearing temp files")
         cleanup(reddit_id)
@@ -88,7 +106,9 @@ if __name__ == "__main__":
             "Hey! Congratulations, you've made it so far (which is pretty rare with no Python 3.10). Unfortunately, this program only works on Python 3.10. Please install Python 3.10 and try again."
         )
         sys.exit()
-    ffmpeg_install()
+    # Prefer the bundled imageio-ffmpeg binary so no system install is needed.
+    if not ensure_ffmpeg():
+        ffmpeg_install()
     directory = Path().absolute()
     config = settings.check_toml(
         f"{directory}/utils/.config.template.toml", f"{directory}/config.toml"
@@ -118,10 +138,6 @@ if __name__ == "__main__":
         else:
             main()
     except KeyboardInterrupt:
-        shutdown()
-    except ResponseException:
-        print_markdown("## Invalid credentials")
-        print_markdown("Please check your credentials in the config.toml file")
         shutdown()
     except Exception as err:
         config["settings"]["tts"]["tiktok_sessionid"] = "REDACTED"

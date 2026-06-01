@@ -1,9 +1,12 @@
 [reddit.creds]
-client_id = { optional = false, nmin = 12, nmax = 30, explanation = "The ID of your Reddit app of SCRIPT type", example = "fFAGRNJru1FTz70BzhT3Zg", regex = "^[-a-zA-Z0-9._~+/]+=*$", input_error = "The client ID can only contain printable characters.", oob_error = "The ID should be over 12 and under 30 characters, double check your input." }
-client_secret = { optional = false, nmin = 20, nmax = 40, explanation = "The SECRET of your Reddit app of SCRIPT type", example = "fFAGRNJru1FTz70BzhT3Zg", regex = "^[-a-zA-Z0-9._~+/]+=*$", input_error = "The client ID can only contain printable characters.", oob_error = "The secret should be over 20 and under 40 characters, double check your input." }
-username = { optional = false, nmin = 3, nmax = 20, explanation = "The username of your reddit account", example = "JasonLovesDoggo", regex = "^[-_0-9a-zA-Z]+$", oob_error = "A username HAS to be between 3 and 20 characters" }
-password = { optional = false, nmin = 8, explanation = "The password of your reddit account", example = "fFAGRNJru1FTz70BzhT3Zg", oob_error = "Password too short" }
-2fa = { optional = true, type = "bool", options = [true, false, ], default = false, explanation = "Whether you have Reddit 2FA enabled, Valid options are True and False", example = true }
+# NOTE: Reddit API credentials are no longer required. This fork reads public
+# post data via reddit.com's .json endpoints through a headed browser session.
+# These fields are kept optional for backwards-compatibility only.
+client_id = { optional = true, default = "", explanation = "(Unused) Legacy Reddit app client ID", example = "fFAGRNJru1FTz70BzhT3Zg" }
+client_secret = { optional = true, default = "", explanation = "(Unused) Legacy Reddit app secret", example = "fFAGRNJru1FTz70BzhT3Zg" }
+username = { optional = true, default = "", explanation = "(Unused) Legacy Reddit username", example = "JasonLovesDoggo" }
+password = { optional = true, default = "", explanation = "(Unused) Legacy Reddit password", example = "fFAGRNJru1FTz70BzhT3Zg" }
+2fa = { optional = true, type = "bool", options = [true, false, ], default = false, explanation = "(Unused) Legacy Reddit 2FA flag", example = true }
 
 
 [reddit.thread]
@@ -23,6 +26,7 @@ ai_similarity_keywords = {optional = true, type="str", example= 'Elon Musk, Twit
 [settings]
 allow_nsfw = { optional = false, type = "bool", default = false, example = false, options = [true, false, ], explanation = "Whether to allow NSFW content, True or False" }
 theme = { optional = false, default = "dark", example = "light", options = ["dark", "light", "transparent", ], explanation = "Sets the Reddit theme, either LIGHT or DARK. For story mode you can also use a transparent background." }
+headless_reddit = { optional = true, type = "bool", default = false, example = false, options = [true, false, ], explanation = "Run the Reddit browser headless. Default false (headed) because Reddit's JS challenge needs a real browser. Only set true for debugging." }
 times_to_run = { optional = false, default = 1, example = 2, explanation = "Used if you want to run multiple times. Set to an int e.g. 4 or 29 or 1", type = "int", nmin = 1, oob_error = "It's very hard to run something less than once." }
 opacity = { optional = false, default = 0.9, example = 0.8, explanation = "Sets the opacity of the comments when overlayed over the background", type = "float", nmin = 0, nmax = 1, oob_error = "The opacity HAS to be between 0 and 1", input_error = "The opacity HAS to be a decimal number between 0 and 1" }
 #transition = { optional = true, default = 0.2, example = 0.2, explanation = "Sets the transition time (in seconds) between the comments. Set to 0 if you want to disable it.", type = "float", nmin = 0, nmax = 2, oob_error = "The transition HAS to be between 0 and 2", input_error = "The opacity HAS to be a decimal number between 0 and 2" }
@@ -45,7 +49,7 @@ background_thumbnail_font_size = { optional = true, type = "int", default = 96, 
 background_thumbnail_font_color = { optional = true, default = "255,255,255", example = "255,255,255", explanation = "Font color in RGB format for the thumbnail text" }
 
 [settings.tts]
-voice_choice = { optional = false, default = "tiktok", options = ["elevenlabs", "streamlabspolly", "tiktok", "googletranslate", "awspolly", "pyttsx", "OpenAI"], example = "tiktok", explanation = "The voice platform used for TTS generation. " }
+voice_choice = { optional = false, default = "tiktok", options = ["elevenlabs", "streamlabspolly", "tiktok", "googletranslate", "awspolly", "pyttsx", "OpenAI", "Kokoro"], example = "tiktok", explanation = "The voice platform used for TTS generation. " }
 random_voice = { optional = false, type = "bool", default = true, example = true, options = [true, false,], explanation = "Randomizes the voice used for each comment" }
 elevenlabs_voice_name = { optional = false, default = "Bella", example = "Bella", explanation = "The voice used for elevenlabs", options = ["Adam", "Antoni", "Arnold", "Bella", "Domi", "Elli", "Josh", "Rachel", "Sam", ] }
 elevenlabs_api_key = { optional = true, example = "21f13f91f54d741e2ae27d2ab1b99d59", explanation = "Elevenlabs API key" }
@@ -61,3 +65,5 @@ openai_api_url = { optional = true, default = "https://api.openai.com/v1/", exam
 openai_api_key = { optional = true, example = "sk-abc123def456...", explanation = "Your OpenAI API key for TTS generation" }
 openai_voice_name = { optional = false, default = "alloy", example = "alloy", explanation = "The voice used for OpenAI TTS generation", options = ["alloy", "ash", "coral", "echo", "fable", "onyx", "nova", "sage", "shimmer", "af_heart"] }
 openai_model = { optional = false, default = "tts-1", example = "tts-1", explanation = "The model variant used for OpenAI TTS generation", options = ["tts-1", "tts-1-hd", "gpt-4o-mini-tts"] }
+kokoro_voice = { optional = true, default = "af_heart", example = "af_bella", explanation = "The voice used for local Kokoro-82M TTS", options = ["af_heart", "af_bella", "af_nicole", "af_sarah", "af_sky", "am_adam", "am_michael", "bf_emma", "bf_isabella", "bm_george", "bm_lewis"] }
+kokoro_speed = { optional = true, default = 1.0, example = 1.0, type = "float", explanation = "Speech speed for Kokoro TTS (1.0 = normal)" }
